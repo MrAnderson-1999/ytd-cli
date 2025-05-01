@@ -1,8 +1,10 @@
 from flask import Flask, request, Response, stream_with_context, abort
+from flask_cors import CORS
 import yt_dlp
 import os
 
 app = Flask(__name__)
+CORS(app, resources={r"/download": {"origins": "*"}})
 
 @app.route('/health', methods=['GET'])
 def health():
