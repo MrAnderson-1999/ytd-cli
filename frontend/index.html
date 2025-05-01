@@ -1,37 +1,38 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>YTDL WAV Downloader</title>
-</head>
-<body>
-  <h1>Download YouTube Audio as WAV</h1>
-  <input id="yturl" type="text" placeholder="Enter YouTube URL" size="50"/>
-  <button id="download">Download</button>
-  <script>
-    document.getElementById('download').onclick = async () => {
-      const url = document.getElementById('yturl').value.trim();
-      if (!url) {
-        alert('Please enter a YouTube URL.');
-        return;
-      }
-      // Build API URL based on page’s host
-      const API_BASE = `${window.location.protocol}//${window.location.hostname}:5000`;
-      const resp = await fetch(`${API_BASE}/download`, {
+<script>
+  document.getElementById('download').onclick = async () => {
+    const ytUrl = document.getElementById('yturl').value.trim();
+    if (!ytUrl) {
+      alert('Enter a YouTube URL first.');
+      return;
+    }
+
+    try {
+      // 1) Request stream from backend
+      const resp = await fetch(`http://${window.location.hostname}:5000/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url: ytUrl })
       });
       if (!resp.ok) {
-        alert('Error: ' + await resp.text());
-        return;
+        throw new Error(await resp.text());
       }
+
+      // 2) Convert to Blob
       const blob = await resp.blob();
+
+      // 3) Create URL & trigger download
+      const urlObject = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
+      link.href = urlObject;
       link.download = 'audio.wav';
+      document.body.appendChild(link); // needed for Firefox
       link.click();
-    };
-  </script>
-</body>
-</html>
+
+      // 4) Cleanup
+      link.remove();
+      URL.revokeObjectURL(urlObject);
+    } catch (err) {
+      alert('Download failed: ' + err.message);
+    }
+  };
+</script>
