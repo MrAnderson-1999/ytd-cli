@@ -1,8 +1,13 @@
 from flask import Flask, request, Response, stream_with_context
 import yt_dlp
 import os
+import uuid
 
 app = Flask(__name__)
+
+@app.route('/health', methods=['GET'])
+def health():
+    return 'OK', 200
 
 @app.route('/download', methods=['POST'])
 def download():
@@ -11,6 +16,8 @@ def download():
     if not url:
         return {'error': 'No URL provided'}, 400
 
+    # Use a unique filename per request to avoid collisions
+    filename = f"{uuid.uuid4().hex}.wav"
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -18,25 +25,33 @@ def download():
             'preferredcodec': 'wav',
             'preferredquality': '192',
         }],
-        'outtmpl': 'audio.%(ext)s',
+        'outtmpl': filename,
         'quiet': True,
     }
 
     def generate():
+        # 1. Download (returns int, not iterable) :contentReference[oaicite:3]{index=3}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            for chunk in ydl.download([url]):
-                pass  # yt-dlp handles file creation
-        # stream the file as it's created
-        with open('audio.wav', 'rb') as f:
-            while True:
-                data = f.read(4096)
-                if not data:
-                    break
-                yield data
-        os.remove('audio.wav')
+            ydl.download([url])
+
+        # 2. Stream the file in chunks :contentReference[oaicite:4]{index=4}
+        try:
+            with open(filename, 'rb') as f:
+                chunk = f.read(8192)
+                while chunk:
+                    yield chunk
+                    chunk = f.read(8192)
+        finally:
+            # 3. Remove the temp file after streaming
+            if os.path.exists(filename):
+                os.remove(filename)
 
     headers = {
-        'Content-Disposition': 'attachment; filename="audio.wav"',
+        'Content-Disposition': f'attachment; filename="audio.wav"',
         'Content-Type': 'audio/wav'
     }
-    return Response(stream_with_context(generate()), headers=headers)
+    return Response(
+        stream_with_context(generate()),
+        headers=headers,
+        mimetype='audio/wav'
+    )
