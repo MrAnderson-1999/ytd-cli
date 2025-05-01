@@ -11,7 +11,7 @@
   <script>
     document.getElementById('download').onclick = async () => {
       const url = document.getElementById('yturl').value;
-      const resp = await fetch('/download', {
+      const resp = await fetch('http://backend:5000/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
