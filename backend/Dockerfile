@@ -11,11 +11,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* 
 
 # Copy just requirements.txt to leverage build cache when deps don’t change
-COPY backend/requirements.txt .
+COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt 
 
 # Copy application source
-COPY backend/ .
+COPY . .
 
 #################################
 # 2. Runtime stage: lean image
