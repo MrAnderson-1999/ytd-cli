@@ -40,6 +40,8 @@ COPY --from=builder /app /app
 # switch to non-root :contentReference[oaicite:5]{index=5}
 USER appuser 
 
+RUN pip install --no-cache-dir gunicorn
+
  # document service port :contentReference[oaicite:6]{index=6}
 EXPOSE 5000
 
