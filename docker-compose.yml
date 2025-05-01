@@ -1,22 +1,32 @@
-version: '3.8'
+version: '3.8'  # Use Compose Specification v3.8 for full feature support :contentReference[oaicite:7]{index=7}
 
 services:
   backend:
+    container_name: yt-backend  # Explicit names avoid auto-generated IDs :contentReference[oaicite:8]{index=8}
     build:
-      context: backend/
-      dockerfile: backend/Dockerfile
+      context: ./backend      # Point to the service’s own folder for a clean build context :contentReference[oaicite:9]{index=9}
+      dockerfile: Dockerfile
     ports:
-      - "5000:5000"
-    volumes:
-      - ./backend:/app
-    restart: unless-stopped
+      - "5000:5000"           # Map host:container ports for external access :contentReference[oaicite:10]{index=10}
+    restart: unless-stopped    # Recover on crashes but don’t restart on deliberate stops :contentReference[oaicite:11]{index=11}
+    healthcheck:              # Let Compose & orchestrators know when the app is ready :contentReference[oaicite:12]{index=12}
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   frontend:
+    container_name: yt-frontend
     build:
-      context: frontend/
-      dockerfile: frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
       - "80:80"
-    volumes:
-      - ./frontend:/usr/share/nginx/html
     restart: unless-stopped
+    depends_on:               # Ensure backend is healthy before starting :contentReference[oaicite:13]{index=13}
+      backend:
+        condition: service_healthy
+
+networks:
+  default:
+    name: ytd-network       # Dedicated network isolates this stack :contentReference[oaicite:14]{index=14}
