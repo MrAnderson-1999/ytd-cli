@@ -10,14 +10,20 @@
   <button id="download">Download</button>
   <script>
     document.getElementById('download').onclick = async () => {
-      const url = document.getElementById('yturl').value;
-      const resp = await fetch('http://backend:5000/download', {
+      const url = document.getElementById('yturl').value.trim();
+      if (!url) {
+        alert('Please enter a YouTube URL.');
+        return;
+      }
+      // Build API URL based on page’s host
+      const API_BASE = `${window.location.protocol}//${window.location.hostname}:5000`;
+      const resp = await fetch(`${API_BASE}/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
       });
       if (!resp.ok) {
-        alert('Error: ' + (await resp.text()));
+        alert('Error: ' + await resp.text());
         return;
       }
       const blob = await resp.blob();

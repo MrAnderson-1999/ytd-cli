@@ -1,20 +1,19 @@
 FROM python:3.12-slim
 
-# Install OS packages and clean up in one layer
+# Install ffmpeg for audio conversion
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python dependencies
-COPY ./requirements.txt .
+WORKDIR /app
+
+# Install Python deps
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir gunicorn
 
-# Copy application code
-COPY . .
+# Copy application
+COPY backend/app.py .
 
-# Expose the service port
 EXPOSE 5000
 
-# Use exec-array form to run Gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
