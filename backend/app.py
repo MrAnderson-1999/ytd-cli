@@ -4,7 +4,7 @@ import yt_dlp
 import os
 
 app = Flask(__name__)
-# enable CORS so your frontend on :80 can POST to :5000
+# Allow your frontend on port 80 to POST here without CORS errors
 CORS(app, resources={r"/download": {"origins": "*"}})
 
 @app.route('/health', methods=['GET'])
@@ -14,11 +14,11 @@ def health():
 @app.route('/download', methods=['POST'])
 def download():
     data = request.get_json() or {}
-    url = data.get('url', '').strip()
+    url  = data.get('url', '').strip()
     if not url:
         return {'error': 'No URL provided'}, 400
 
-    # original style download + conversion, using title-based template
+    # 1) Download+convert with title-based template
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -29,36 +29,37 @@ def download():
         'outtmpl': '%(title)s.%(ext)s',
         'quiet': True,
     }
-
-    # run download and get back info dict, including actual filepath
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+        info = ydl.extract_info(url, download=True)  # returns metadata dict :contentReference[oaicite:7]{index=7}
 
-    # yt-dlp only populates 'filepath' after post-processing
-    filepath = info.get('filepath')
-    if not filepath or not os.path.exists(filepath):
-        abort(500, f"Download failed, file not found: {filepath!r}")
+        # 2) Compute the raw filename and swap to .wav
+        raw_path = ydl.prepare_filename(info)        # e.g. "My Video Title.webm" :contentReference[oaicite:8]{index=8}
+    base, _   = os.path.splitext(raw_path)           # splits into ("My Video Title", ".webm") :contentReference[oaicite:9]{index=9}
+    wav_path  = base + '.wav'                        # "My Video Title.wav"
 
+    # 3) Verify file exists
+    if not os.path.exists(wav_path):
+        abort(500, f"Download failed, file not found: {wav_path!r}")
+
+    # 4) Stream back to client
     def generate():
         try:
-            with open(filepath, 'rb') as f:
+            with open(wav_path, 'rb') as f:
                 for chunk in iter(lambda: f.read(8192), b''):
                     yield chunk
         finally:
+            # Cleanup once streaming finishes or errors
             try:
-                os.remove(filepath)
+                os.remove(wav_path)
             except OSError:
                 pass
 
-    # use the original video title for the client filename
-    title = info.get('title', 'audio')
-    headers = {
-        'Content-Disposition': f'attachment; filename="{title}.wav"',
-        'Content-Type': 'audio/wav',
-    }
     return Response(
-        stream_with_context(generate()),
-        headers=headers,
+        stream_with_context(generate()),            # keep request context active :contentReference[oaicite:10]{index=10}
+        headers={
+            'Content-Disposition': f'attachment; filename="{info.get("title","audio")}.wav"',
+            'Content-Type': 'audio/wav'
+        },
         mimetype='audio/wav'
     )
 
