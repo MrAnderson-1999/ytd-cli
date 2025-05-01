@@ -1,38 +1,63 @@
-<script>
-  document.getElementById('download').onclick = async () => {
-    const ytUrl = document.getElementById('yturl').value.trim();
-    if (!ytUrl) {
-      alert('Enter a YouTube URL first.');
-      return;
-    }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YTDL WAV Downloader</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
+    input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; }
+    button { padding: 0.5rem 1rem; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Download YouTube Audio as WAV</h1>
+  <input id="yturl" type="text" placeholder="Enter YouTube URL" />
+  <button id="download">Download</button>
 
-    try {
-      // 1) Request stream from backend
-      const resp = await fetch(`http://${window.location.hostname}:5000/download`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: ytUrl })
-      });
-      if (!resp.ok) {
-        throw new Error(await resp.text());
+  <script>
+    document.getElementById('download').addEventListener('click', async () => {
+      const url = document.getElementById('yturl').value.trim();
+      if (!url) {
+        alert('Please enter a valid YouTube URL.');
+        return;
       }
 
-      // 2) Convert to Blob
-      const blob = await resp.blob();
+      try {
+        // POST to backend; assumes backend on same host at port 5000
+        const apiUrl = `${window.location.protocol}//${window.location.hostname}:5000/download`;
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
 
-      // 3) Create URL & trigger download
-      const urlObject = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = urlObject;
-      link.download = 'audio.wav';
-      document.body.appendChild(link); // needed for Firefox
-      link.click();
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || response.statusText);
+        }
 
-      // 4) Cleanup
-      link.remove();
-      URL.revokeObjectURL(urlObject);
-    } catch (err) {
-      alert('Download failed: ' + err.message);
-    }
-  };
-</script>
+        // Read the streamed WAV as a Blob
+        const blob = await response.blob();
+
+        // Create a temporary URL for the Blob
+        const blobUrl = URL.createObjectURL(blob);
+
+        // Create a link element, trigger download
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        // Suggest a default filename; backend also sets Content-Disposition
+        link.download = 'audio.wav';
+        document.body.appendChild(link);   // Required for Firefox
+        link.click();
+
+        // Clean up
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch (err) {
+        alert('Download failed: ' + err.message);
+      }
+    });
+  </script>
+</body>
+</html>
