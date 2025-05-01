@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>YTDL WAV Downloader</title>
+</head>
+<body>
+  <h1>Download YouTube Audio as WAV</h1>
+  <input id="yturl" type="text" placeholder="Enter YouTube URL" size="50"/>
+  <button id="download">Download</button>
+  <script>
+    document.getElementById('download').onclick = async () => {
+      const url = document.getElementById('yturl').value;
+      const resp = await fetch('/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      if (!resp.ok) {
+        alert('Error: ' + (await resp.text()));
+        return;
+      }
+      const blob = await resp.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'audio.wav';
+      link.click();
+    };
+  </script>
+</body>
+</html>
