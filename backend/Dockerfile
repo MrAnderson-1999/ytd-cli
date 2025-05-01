@@ -10,6 +10,7 @@ WORKDIR /app
 # Install Python deps
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir gunicorn
 
 # Copy application
 COPY backend/app.py .
