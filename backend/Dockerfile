@@ -25,10 +25,15 @@ RUN useradd --system --no-create-home appuser
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=builder . /app
 
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir gunicorn
+
+RUN pip install --no-cache-dir -r requirements.txt
+
 USER appuser
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD curl -f http://localhost:5000/health || exit 1
+  RUN curl -f http://localhost:5000/health || exit 1
 
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
