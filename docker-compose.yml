@@ -1,27 +1,22 @@
 services:
-  proxy:
-    image: nginx:stable-alpine                 # official lightweight build :contentReference[oaicite:3]{index=3}
-    container_name: ytd-proxy
-    ports:
-      - "80:80"                                 # public entry point :contentReference[oaicite:4]{index=4}
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro     # mount static assets read-only :contentReference[oaicite:5]{index=5}
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - backend                                 # ensure backend container is started first :contentReference[oaicite:6]{index=6}
-    restart: unless-stopped                     # self-healing policy :contentReference[oaicite:7]{index=7}
-    networks:
-      - ytd-network
-
   backend:
-    image: yt-backend:latest                    # use locally built image tag :contentReference[oaicite:8]{index=8}
-    container_name: yt-backend
-    expose:
-      - "5000"                                  # internal-only port, not published externally :contentReference[oaicite:9]{index=9}
-    restart: unless-stopped                     # recover on crashes :contentReference[oaicite:10]{index=10}
-    networks:
-      - ytd-network
+    build:
+      context: ./backend             # your existing backend folder :contentReference[oaicite:1]{index=1}
+      dockerfile: Dockerfile
+    image: yt-backend:latest         # tags the built image locally
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend            # your existing frontend folder :contentReference[oaicite:2]{index=2}
+      dockerfile: Dockerfile
+    image: yt-frontend:latest
+    ports:
+      - "80:80"
+    restart: unless-stopped
 
 networks:
-  ytd-network:
-    driver: bridge                              # dedicated bridge for service discovery :contentReference[oaicite:11]{index=11}
+  default:
+    name: ytd-network
