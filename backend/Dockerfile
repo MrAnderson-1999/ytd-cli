@@ -18,8 +18,3 @@ EXPOSE 5000
 
 # Use exec-array form to run Gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
-
-
-curl -X POST "http://backend:5000/download" \
-     -H "Content-Type: application/json" \
-     -d '{"url":"https://www.youtube.com/watch?v=7SCWy9gsw3E&ab_channel=Movieclips"}'
