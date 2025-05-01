@@ -1,16 +1,10 @@
-version: '3.8'
-
 services:
   backend:
-    container_name: yt-backend
-    image: yt-backend:latest
+    container_name: yt-backend    # Explicit container name
+    image: yt-backend:latest      # Use the locally built image
+    ports:                        # Correctly map host→container port
       - "5000:5000"
-    restart: unless-stopped
-    # healthcheck:                         # Wait until the app is healthy before marking “up” :contentReference[oaicite:4]{index=4}
-    #   test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-    #   interval: 5s
-    #   timeout: 1s
-    #   retries: 3
+    restart: unless-stopped       # Self-healing policy
 
   frontend:
     container_name: yt-frontend
@@ -18,10 +12,7 @@ services:
     ports:
       - "80:80"
     restart: unless-stopped
-    # depends_on:                          # Ensure backend passes healthcheck first :contentReference[oaicite:5]{index=5}
-    #   backend:
-    #     condition: service_healthy
 
 networks:
   default:
-    name: ytd-network
+    name: ytd-network             # Dedicated network for service discovery
