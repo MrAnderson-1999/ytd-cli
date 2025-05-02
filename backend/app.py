@@ -1,4 +1,5 @@
 import os
+import yt_dlp
 import tempfile
 import shutil
 import zipfile
@@ -8,11 +9,10 @@ from logging.config import dictConfig
 
 from flask import Flask, request, jsonify, Response, stream_with_context, abort
 from flask_cors import CORS
-import yt_dlp
 from yt_dlp.utils import DownloadError
 
 # ———————————————————————————————————————————————
-# 1) Logging Configuration
+# 1) Structured logging configuration
 # ———————————————————————————————————————————————
 dictConfig({
     'version': 1,
@@ -37,72 +37,56 @@ dictConfig({
 })
 
 app = Flask(__name__)
+# Expose both endpoints with proper CORS, including Content-Disposition header
 CORS(app,
-     resources={r"/download": {"origins": "*"},
-                r"/info":     {"origins": "*"}},
+     resources={r"/info": {"origins": "*"},
+                r"/download": {"origins": "*"}},
      expose_headers=["Content-Disposition"])
-
 app.logger.info("App startup complete")
 
 # ———————————————————————————————————————————————
-# 2) Metadata-only endpoint
+# 2) Metadata-only endpoint for frontend preview
 # ———————————————————————————————————————————————
 @app.route('/info', methods=['POST'])
 def info():
-    """
-    Returns JSON metadata for a given URL without downloading.
-    {
-      type: "video" | "playlist",
-      title: "...",
-      thumbnail: "...",
-      formats: [ "wav","mp3","flac", ... ],        # for single
-      entries: [                                  # for playlist
-        { id, title, thumbnail, formats: [...] },
-        ...
-      ]
-    }
-    """
     data = request.get_json() or {}
-    url = data.get('url', '').strip()
+    url  = data.get('url', '').strip()
     if not url:
         return jsonify(error="No URL provided"), 400
 
-    app.logger.info(f"Fetching metadata for URL: {url!r}")
+    app.logger.info(f"Fetching metadata for: {url!r}")
     ydl_opts = {
         'skip_download': True,
         'quiet': True,
-        # get all format info
         'format': 'bestaudio/best',
+        'ignoreerrors': True,  # skip DRM/unavailable entries :contentReference[oaicite:4]{index=4}
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=False)  # throws DownloadError on DRM :contentReference[oaicite:5]{index=5}
     except DownloadError as e:
-        app.logger.error(f"Metadata fetch error: {e}")
+        app.logger.error(f"Metadata fetch failed: {e}")
         return jsonify(error=str(e)), 502
 
-    # common fields
-    video_type = info.get('_type', 'video')
-    if video_type == 'playlist':
-        # Playlist/show: list entries
+    # Playlist vs single detection
+    if info.get('_type') == 'playlist':
         title     = info.get('title') or 'playlist'
-        thumbnail = info.get('thumbnails') and info['thumbnails'][-1].get('url')
+        thumbnail = (info.get('thumbnails') or [])[-1].get('url') if info.get('thumbnails') else None
         entries   = []
-        for entry in info.get('entries', []):
+        for entry in info.get('entries') or []:
             if not entry:
+                app.logger.warning("Skipping an unavailable playlist entry")  # DRM or removed :contentReference[oaicite:6]{index=6}
                 continue
             e_title     = entry.get('title')
             e_id        = entry.get('id')
-            # thumbnail fallback
-            thumb       = (entry.get('thumbnails') and entry['thumbnails'][-1].get('url')) or thumbnail
-            # collect available formats by extension
+            thumb       = (entry.get('thumbnails') or [])[-1].get('url') if entry.get('thumbnails') else thumbnail
             exts        = sorted({f.get('ext') for f in entry.get('formats', []) if f.get('ext')})
             entries.append({
                 'id':        e_id,
                 'title':     e_title,
                 'thumbnail': thumb,
-                'formats':   exts,
+                'formats':   exts
             })
         return jsonify({
             'type':      'playlist',
@@ -111,10 +95,9 @@ def info():
             'entries':   entries
         })
     else:
-        # Single video/episode/track
+        # Single video/track
         title     = info.get('title') or 'audio'
-        thumbnail = info.get('thumbnails') and info['thumbnails'][-1].get('url')
-        # available formats
+        thumbnail = (info.get('thumbnails') or [])[-1].get('url') if info.get('thumbnails') else None
         exts      = sorted({f.get('ext') for f in info.get('formats', []) if f.get('ext')})
         return jsonify({
             'type':      'video',
@@ -123,82 +106,75 @@ def info():
             'formats':   exts
         })
 
-
 # ———————————————————————————————————————————————
-# 3) Download endpoint (as before)
+# 3) Download endpoint with DRM/error handling
 # ———————————————————————————————————————————————
 @app.route('/download', methods=['POST'])
 def download():
-    """
-    Accepts:
-      {
-        items: [
-          { id: "...", url: "...", format: "wav"|"mp3"|"flac" },
-          ...
-        ]
-      }
-    or (legacy):
-      { url: "..." }
-    Streams back a single .wav/.mp3/.zip based on selection.
-    """
     data = request.get_json() or {}
-    # backwards‐compat: single URL request
+    # Legacy support: wrap single URL into items list
     if 'url' in data and 'items' not in data:
-        # wrap single URL into items list
-        data = {'items': [{ 'id': data['url'], 'url': data['url'], 'format': 'wav' }]}
+        data = {'items': [{'url': data['url'], 'format': 'wav'}]}
 
     items = data.get('items') or []
     if not items:
         return jsonify(error="No download items provided"), 400
 
-    app.logger.info(f"Download request for {len(items)} item(s)")
-
-    # Create temp dir to store files
+    app.logger.info(f"Processing download of {len(items)} item(s)")
     tmpdir = tempfile.mkdtemp(prefix="ytdl_")
-    app.logger.debug(f"Temp workspace: {tmpdir}")
-
     downloaded = []
-    ydl_opts = {
-        'quiet': True,
-        'format': 'bestaudio/best',
-        'ignoreerrors': True,
-    }
 
-    # Download each item separately into tmpdir
+    # Loop through each requested item
     for idx, it in enumerate(items, 1):
-        item_url    = it.get('url')
-        out_format  = it.get('format', 'wav')
-        safe_title  = f"item_{idx}"
-        ydl_opts['outtmpl'] = os.path.join(tmpdir, safe_title + '.%(ext)s')
-
-        # Postprocessor for audio conversion
-        # FLAC & MP3 via ffmpeg; WAV via postprocessor
+        item_url   = it.get('url')
+        out_format = it.get('format', 'wav')
+        safe_name  = f"item_{idx}"
+        ydl_opts   = {
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'ignoreerrors': True,     # skip DRM/unplayable items :contentReference[oaicite:7]{index=7}
+            'outtmpl': os.path.join(tmpdir, safe_name + '.%(ext)s')
+        }
         pp = []
-        if out_format == 'wav':
-            pp = [{
+        if out_format in ('wav','mp3','flac'):
+            pp.append({
                 'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'wav',
+                'preferredcodec': out_format,
                 'preferredquality': '192',
-            }]
-        elif out_format in ('mp3','flac'):
-            pp = [{ 'key': 'FFmpegExtractAudio', 'preferredcodec': out_format }]
+            })
         ydl_opts['postprocessors'] = pp
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 app.logger.info(f"Downloading item #{idx}: {item_url}")
-                info = ydl.extract_info(item_url, download=True)
-                # pick the resulting filename
-                fname = ydl.prepare_filename(info).rsplit('.',1)[0] + f".{out_format}"
-                downloaded.append(fname)
+                info = ydl.extract_info(item_url, download=True)  # may raise DownloadError :contentReference[oaicite:8]{index=8}
         except DownloadError as e:
-            app.logger.error(f"Failed to download {item_url}: {e}")
+            app.logger.error(f"Error downloading {item_url}: {e}")
+            continue
 
-    # If multiple items, zip them; else return the single file
+        if info is None:
+            app.logger.warning(f"Skipping item #{idx}, no info returned (DRM or unsupported)")
+            continue
+
+        try:
+            # Build filename from template, skip None info
+            out_fname = ydl.prepare_filename(info).rsplit('.',1)[0] + f".{out_format}"
+        except Exception as e:
+            app.logger.error(f"Failed to prepare filename for item #{idx}: {e}")
+            continue
+
+        downloaded.append(out_fname)
+
+    # No successful downloads?
+    if not downloaded:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        return jsonify(error="All items failed or were DRM-protected"), 502
+
+    # Multiple vs single file response
     if len(downloaded) > 1:
         zip_name = "bundle.zip"
         zip_path = os.path.join(tmpdir, zip_name)
-        with zipfile.ZipFile(zip_path,'w') as zf:
+        with zipfile.ZipFile(zip_path, 'w') as zf:
             for f in downloaded:
                 path = os.path.join(tmpdir, f)
                 if os.path.exists(path):
@@ -209,17 +185,23 @@ def download():
     else:
         download_name = downloaded[0]
         stream_path   = os.path.join(tmpdir, download_name)
-        mime_type     = download_name.lower().endswith('.wav') and 'audio/wav' or 'application/octet-stream'
+        mime_type     = (
+            'audio/wav' if download_name.lower().endswith('.wav')
+            else 'audio/mpeg'
+        )
 
-    # Build safe Content-Disposition header
+    # Build RFC5987 Content-Disposition
     ascii_name   = download_name.encode('ascii','ignore').decode() or download_name
     encoded_name = quote(download_name)
-    disposition  = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}"
+    disposition  = (
+        f"attachment; filename=\"{ascii_name}\"; "
+        f"filename*=UTF-8''{encoded_name}"
+    )
+    app.logger.info(f"Streaming back: {download_name}")
 
-    app.logger.info(f"Streaming back {download_name}")
     def generate():
         try:
-            with open(stream_path,'rb') as f:
+            with open(stream_path, 'rb') as f:
                 for chunk in iter(lambda: f.read(8192), b''):
                     yield chunk
         finally:
@@ -233,7 +215,6 @@ def download():
         },
         mimetype=mime_type
     )
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
