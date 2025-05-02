@@ -1,3 +1,4 @@
-flask
-yt_dlp
-Flask-CORS
+Flask==2.2.5
+yt-dlp==2025.01.01
+Flask-CORS==3.0.10
+gevent>=1.4
