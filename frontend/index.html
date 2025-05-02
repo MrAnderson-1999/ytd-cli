@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>YTDL WAV Downloader</title>
+  <title>YTDL WAV/Playlist Downloader</title>
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
     input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; }
@@ -11,20 +11,19 @@
   </style>
 </head>
 <body>
-  <h1>Download YouTube Audio as WAV</h1>
-  <input id="yturl" type="text" placeholder="Enter YouTube URL" />
+  <h1>Download YouTube Audio or Playlist</h1>
+  <input id="yturl" type="text" placeholder="Enter YouTube URL or playlist link" />
   <button id="download">Download</button>
 
   <script>
     document.getElementById('download').addEventListener('click', async () => {
       const url = document.getElementById('yturl').value.trim();
       if (!url) {
-        alert('Please enter a valid YouTube URL.');
+        alert('Please enter a valid YouTube URL or playlist.');
         return;
       }
 
       try {
-        // POST to backend; assumes backend on same host at port 5000
         const apiUrl = `${window.location.protocol}//${window.location.hostname}:5000/download`;
         const response = await fetch(apiUrl, {
           method: 'POST',
@@ -33,27 +32,39 @@
         });
 
         if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || response.statusText);
+          throw new Error(await response.text() || response.statusText);
         }
 
-        // Read the streamed WAV as a Blob
-        const blob = await response.blob();
+        // 1) Parse the Content-Disposition header to get the real filename
+        const disposition = response.headers.get('Content-Disposition') || '';
+        let filename = 'download';
+        // RFC5987-style filename*
+        const starMatch = disposition.match(/filename\*\=UTF-8''([^;]+)/);
+        if (starMatch) {
+          filename = decodeURIComponent(starMatch[1]);
+        } else {
+          // Fallback to regular filename="..."
+          const regularMatch = disposition.match(/filename=\"?([^\";]+)\"?/);
+          if (regularMatch) {
+            filename = regularMatch[1];
+          }
+        }
 
-        // Create a temporary URL for the Blob
+        // 2) Read the streamed response as a Blob
+        const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
 
-        // Create a link element, trigger download
+        // 3) Create a temporary link and trigger native download
         const link = document.createElement('a');
         link.href = blobUrl;
-        // Suggest a default filename; backend also sets Content-Disposition
-        link.download = 'audio.wav';
-        document.body.appendChild(link);   // Required for Firefox
+        link.download = filename;
+        document.body.appendChild(link);   // required for Firefox
         link.click();
 
-        // Clean up
+        // 4) Cleanup
         link.remove();
         URL.revokeObjectURL(blobUrl);
+
       } catch (err) {
         alert('Download failed: ' + err.message);
       }
