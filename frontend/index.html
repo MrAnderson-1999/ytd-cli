@@ -35,36 +35,35 @@
           throw new Error(await response.text() || response.statusText);
         }
 
-        // 1) Parse the Content-Disposition header to get the real filename
-        const disposition = response.headers.get('Content-Disposition') || '';
-        let filename = 'download';
-        // RFC5987-style filename*
-        const starMatch = disposition.match(/filename\*\=UTF-8''([^;]+)/);
-        if (starMatch) {
-          filename = decodeURIComponent(starMatch[1]);
+        // Ensure Content-Disposition is readable by JS
+        // (server must send Access-Control-Expose-Headers: Content-Disposition)
+        const dispo = response.headers.get('Content-Disposition') || '';
+
+        // Attempt to extract UTF-8 filename* per RFC5987
+        let filename;
+        const rfc5987 = dispo.match(/filename\*\=UTF-8''([^;]+)/);
+        if (rfc5987) {
+          filename = decodeURIComponent(rfc5987[1]);
         } else {
-          // Fallback to regular filename="..."
-          const regularMatch = disposition.match(/filename=\"?([^\";]+)\"?/);
-          if (regularMatch) {
-            filename = regularMatch[1];
-          }
+          // Fallback to ASCII filename="..."
+          const regular = dispo.match(/filename=\"?([^\";]+)\"?/);
+          filename = regular ? regular[1] : 'download';
         }
 
-        // 2) Read the streamed response as a Blob
+        // Read streamed response as Blob
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
 
-        // 3) Create a temporary link and trigger native download
+        // Create a link with the correct filename and trigger download
         const link = document.createElement('a');
         link.href = blobUrl;
         link.download = filename;
         document.body.appendChild(link);   // required for Firefox
         link.click();
 
-        // 4) Cleanup
+        // Cleanup
         link.remove();
         URL.revokeObjectURL(blobUrl);
-
       } catch (err) {
         alert('Download failed: ' + err.message);
       }
