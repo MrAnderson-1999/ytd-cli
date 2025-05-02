@@ -20,7 +20,4 @@ COPY backend/app.py .
 EXPOSE 5000
 
 # Now gevent is available
-CMD ["gunicorn", "app:app",
-     "--bind", "0.0.0.0:5000",
-     "--worker-class", "gevent",
-     "--timeout", "300"]
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--worker-class", "gevent", "--timeout", "300"]
