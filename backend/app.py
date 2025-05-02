@@ -93,7 +93,12 @@ def download():
     }
     app.logger.debug(f"yt-dlp options: {ydl_opts}")
 
-    # Run download (handles single or playlist)
+    # Run download (handles single video, playlist, or Spotify links)
+    # Detect Spotify URLs to skip WAV conversion
+    is_spotify = 'open.spotify.com' in url
+    if is_spotify:
+        app.logger.info("Spotify URL detected: skipping WAV conversion")
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         app.logger.info("Starting yt-dlp download")
         info = ydl.extract_info(url, download=True)
