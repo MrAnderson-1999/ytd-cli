@@ -2,6 +2,8 @@ from flask import Flask, request, Response, stream_with_context, abort
 from flask_cors import CORS
 import yt_dlp
 import os
+from urllib.parse import quote
+
 
 app = Flask(__name__)
 # Allow your frontend on port 80 to POST here without CORS errors
@@ -54,10 +56,23 @@ def download():
             except OSError:
                 pass
 
+    # After downloading and extracting info:
+    title = info.get('title', 'audio')
+    # ASCII fallback: strip or transliterate non-ASCII
+    ascii_title = title.encode('ascii', 'ignore').decode() or 'audio'
+    # Percent-encode UTF-8 title per RFC5987
+    encoded_title = quote(title)
+    # Build the combined Content-Disposition header
+    disposition = (
+        f"attachment; "
+        f'filename="{ascii_title}.wav"; '
+        f"filename*=UTF-8''{encoded_title}.wav"
+    )
+
     return Response(
         stream_with_context(generate()),            # keep request context active :contentReference[oaicite:10]{index=10}
         headers={
-            'Content-Disposition': f'attachment; filename="{info.get("title","audio")}.wav"',
+            'Content-Disposition': disposition,
             'Content-Type': 'audio/wav'
         },
         mimetype='audio/wav'
