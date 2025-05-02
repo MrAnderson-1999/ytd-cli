@@ -11,7 +11,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: Dockerfile.frontend
     image: yt-frontend:latest
     ports:
       - "80:80"
