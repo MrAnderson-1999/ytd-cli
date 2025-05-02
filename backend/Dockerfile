@@ -17,4 +17,4 @@ COPY backend/app.py .
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app", "--worker-class", "gevent", "--timeout", "300"]
